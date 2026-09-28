@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "A Trello-like boards/lists/cards app (To-Do MVP).",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "workspaces": [
     "server"
