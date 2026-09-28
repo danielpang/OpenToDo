@@ -1,7 +1,19 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { motion, theme } from '../theme';
 
-export default function Layout({ children }: { children?: ReactNode }) {
+/**
+ * Application shell. Renders the persistent header — a branded accent bar with
+ * the "OpenToDo" title that slides down on mount via the `motion.spring` token
+ * (transform + opacity) — and an `<Outlet/>` into which React Router renders
+ * the matched page route (BoardsPage or BoardView).
+ *
+ * The shell is intentionally free of page data concerns: L3/L4 own the page
+ * components; this layout only provides structure, theming, and the motion
+ * entrance. It is a layout route element (see App.tsx), so callers do not pass
+ * `children`.
+ */
+export default function Layout() {
   const [visible, setVisible] = useState(false);
   useEffect(() => setVisible(true), []);
 
@@ -24,7 +36,9 @@ export default function Layout({ children }: { children?: ReactNode }) {
         />
         <h1 className="text-lg font-semibold">OpenToDo</h1>
       </header>
-      <main className="flex-1 p-4">{children}</main>
+      <main className="flex-1 p-4">
+        <Outlet />
+      </main>
     </div>
   );
 }

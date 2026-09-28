@@ -2,22 +2,31 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import Layout from './components/Layout';
 
+// Lazy page shells. The actual board/list/card data will be wired in by L3
+// (BoardsPage) and L4 (BoardView); for F1 these are harmless placeholders that
+// resolve to a static heading so the route shell is exercised end-to-end.
 const BoardsPage = lazy(() => import('./pages/BoardsPage'));
 const BoardView = lazy(() => import('./pages/BoardView'));
 
+/**
+ * Router shell. `Layout` is a path-less *layout route*: its `<Outlet/>` renders
+ * the matched child route while the header stays put. Every page route is
+ * lazy-loaded and wrapped in a single `<Suspense>` boundary so the shell is
+ * ready while chunks stream in.
+ */
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout>
-        <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
-          <Routes>
+      <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+        <Routes>
+          <Route element={<Layout />}>
             <Route index element={<Navigate to="/boards" replace />} />
             <Route path="/boards" element={<BoardsPage />} />
             <Route path="/boards/:id" element={<BoardView />} />
             <Route path="*" element={<Navigate to="/boards" replace />} />
-          </Routes>
-        </Suspense>
-      </Layout>
+          </Route>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }
