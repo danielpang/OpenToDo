@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Test coverage / output
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.*
+
+# Server database (created at runtime, L1)
+/server/data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

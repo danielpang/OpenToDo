@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+package-lock.json
+.gitignore
+.prettierignore
+
+# Pre-existing planner docs (not authored by scaffold leaves; L6 formats README).
+PLAN.md
+docs/
