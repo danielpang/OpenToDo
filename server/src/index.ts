@@ -1,6 +1,7 @@
 import express, { Express, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import { getDb } from './db';
+import { apiErrorHandler, router as apiRouter } from './routes';
 
 // Application factory: builds and returns the Express app. Kept as a function so that
 // later leaves (e.g. L1 DB init, L2 router mount) can wire up middleware/routes before
@@ -15,6 +16,14 @@ const createApp = (): Express => {
   app.get('/api/health', (_req: Request, res: Response) => {
     res.json({ ok: true });
   });
+
+  // L2: REST API routes (boards, lists, cards) mounted at /api.
+  app.use('/api', apiRouter);
+
+  // L2: translates ApiError (400/404/…) thrown by route handlers into the
+  // contract's `{ error }` JSON body. Unexpected errors fall through to the
+  // 500 handler below.
+  app.use(apiErrorHandler);
 
   // 404 handler — must be registered after all routes so it catches unmatched paths.
   app.use((_req: Request, res: Response) => {
