@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-body: ui-sans, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  /* Mirror the theme.ts surface palette so the shell has real dark/light
+     styles even before any `dark:` utility is applied by a component. */
+  --color-bg: #f8fafc;
+  --color-fg: #0f172a;
+}
+
+html.dark {
+  --color-bg: #0f172a;
+  --color-fg: #f1f5f9;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
