@@ -17,6 +17,12 @@ function toList(l: List) {
   return { id: l.id, boardId: l.board_id, title: l.title, position: l.position };
 }
 
+listsRouter.get('/', (req, res) => {
+  const boardId = asId(req.query.boardId, 'boardId');
+  if (!boards.get(boardId)) throw notFound('board not found');
+  res.json(lists.list(boardId).map(toList));
+});
+
 listsRouter.post('/', (req, res) => {
   const body = bodyObject(req);
   const boardId = asId(body.boardId, 'boardId');

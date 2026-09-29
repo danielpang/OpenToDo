@@ -20,6 +20,57 @@ async function createBoardAndList(): Promise<{ boardId: number; listId: number }
   return { boardId: board.body.id, listId: list.body.id };
 }
 
+describe('GET /api/cards', () => {
+  it('returns a list\'s cards ordered by position', async () => {
+    const { listId } = await createBoardAndList();
+    const first = await request(app).post('/api/cards').send({ listId, title: 'First' });
+    const second = await request(app).post('/api/cards').send({ listId, title: 'Second' });
+
+    const res = await request(app).get('/api/cards').query({ listId });
+    expect(res.status).toBe(200);
+    expect(res.body.map((c: { title: string }) => c.title)).toEqual(['First', 'Second']);
+    expect(res.body[0]).toMatchObject({
+      id: first.body.id,
+      listId,
+      title: 'First',
+      description: '',
+      position: 1,
+    });
+    expect(res.body[1]).toMatchObject({
+      id: second.body.id,
+      listId,
+      title: 'Second',
+      description: '',
+      position: 2,
+    });
+  });
+
+  it('returns an empty array when the list has no cards', async () => {
+    const { listId } = await createBoardAndList();
+    const res = await request(app).get('/api/cards').query({ listId });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns 404 when the list does not exist', async () => {
+    const res = await request(app).get('/api/cards').query({ listId: 9999 });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+
+  it('returns 400 when listId is not a positive integer', async () => {
+    const res = await request(app).get('/api/cards').query({ listId: 'abc' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+
+  it('returns 400 when listId is missing', async () => {
+    const res = await request(app).get('/api/cards');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+});
+
 describe('POST /api/cards', () => {
   it('creates a card and returns 201 with the projected shape', async () => {
     const { listId } = await createBoardAndList();

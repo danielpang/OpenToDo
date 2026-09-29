@@ -20,6 +20,59 @@ async function createBoardAndList(): Promise<{ boardId: number; listId: number }
   return { boardId: board.body.id, listId: list.body.id };
 }
 
+describe('GET /api/lists', () => {
+  it('returns the board\'s lists ordered by position', async () => {
+    const board = await request(app).post('/api/boards').send({ title: 'B' });
+    const first = await request(app)
+      .post('/api/lists')
+      .send({ boardId: board.body.id, title: 'Todo' });
+    const second = await request(app)
+      .post('/api/lists')
+      .send({ boardId: board.body.id, title: 'Done' });
+
+    const res = await request(app).get('/api/lists').query({ boardId: board.body.id });
+    expect(res.status).toBe(200);
+    expect(res.body.map((l: { title: string }) => l.title)).toEqual(['Todo', 'Done']);
+    expect(res.body[0]).toMatchObject({
+      id: first.body.id,
+      boardId: board.body.id,
+      title: 'Todo',
+      position: 1,
+    });
+    expect(res.body[1]).toMatchObject({
+      id: second.body.id,
+      boardId: board.body.id,
+      title: 'Done',
+      position: 2,
+    });
+  });
+
+  it('returns an empty array when the board has no lists', async () => {
+    const board = await request(app).post('/api/boards').send({ title: 'B' });
+    const res = await request(app).get('/api/lists').query({ boardId: board.body.id });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns 404 when the board does not exist', async () => {
+    const res = await request(app).get('/api/lists').query({ boardId: 9999 });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+
+  it('returns 400 when boardId is not a positive integer', async () => {
+    const res = await request(app).get('/api/lists').query({ boardId: 'abc' });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+
+  it('returns 400 when boardId is missing', async () => {
+    const res = await request(app).get('/api/lists');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: expect.any(String) });
+  });
+});
+
 describe('POST /api/lists', () => {
   it('creates a list and returns 201 with the projected shape', async () => {
     const board = await request(app).post('/api/boards').send({ title: 'B' });

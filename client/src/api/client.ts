@@ -124,6 +124,8 @@ export const api = {
   },
 
   lists: {
+    list: (boardId: number): Promise<List[]> =>
+      request<List[]>(`/lists?boardId=${boardId}`),
     create: (body: CreateListRequest): Promise<List> => request<List>('/lists', { body }),
     update: (id: number, body: UpdateListRequest): Promise<List> =>
       request<List>(`/lists/${id}`, { body, init: { method: 'PATCH' } }),
@@ -134,6 +136,8 @@ export const api = {
   },
 
   cards: {
+    list: (listId: number): Promise<Card[]> =>
+      request<Card[]>(`/cards?listId=${listId}`),
     create: (body: CreateCardRequest): Promise<Card> => request<Card>('/cards', { body }),
     update: (id: number, body: UpdateCardRequest): Promise<Card> =>
       request<Card>(`/cards/${id}`, { body, init: { method: 'PATCH' } }),

@@ -25,6 +25,12 @@ function toCard(c: Card) {
   };
 }
 
+cardsRouter.get('/', (req, res) => {
+  const listId = asId(req.query.listId, 'listId');
+  if (!lists.get(listId)) throw notFound('list not found');
+  res.json(cards.list(listId).map(toCard));
+});
+
 cardsRouter.post('/', (req, res) => {
   const body = bodyObject(req);
   const listId = asId(body.listId, 'listId');

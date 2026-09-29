@@ -75,6 +75,15 @@ Delete a board.
 
 A list belongs to a board.
 
+### `GET /api/lists?boardId=<number>`
+
+List all lists that belong to a board, ordered by `position`.
+
+- **Query params:** `boardId` (positive integer, required)
+- **Status:** `200 OK`
+- **Response:** `List[]`
+- **Errors:** `400` if `boardId` is missing or not a positive integer; `404` if the board does not exist.
+
 ### `POST /api/lists`
 
 Create a list under a board.
@@ -113,6 +122,15 @@ the supplied order and **persisted** to the database.
 ## Cards
 
 A card belongs to a list.
+
+### `GET /api/cards?listId=<number>`
+
+List all cards that belong to a list, ordered by `position`.
+
+- **Query params:** `listId` (positive integer, required)
+- **Status:** `200 OK`
+- **Response:** `Card[]`
+- **Errors:** `400` if `listId` is missing or not a positive integer; `404` if the list does not exist.
 
 ### `POST /api/cards`
 
