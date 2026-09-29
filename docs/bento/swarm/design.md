@@ -1,68 +1,62 @@
-# Swarm Design Note — ToDo App MVP
+# Trello MVP — Swarm Design Note
 
-## Goal
-Trello-like clone in `/workspace/OpenToDo`: Boards → Lists → Cards, drag-and-drop reorder/move, persistent storage, no auth (single shared workspace). Fun, beautiful, practical UI. Per-leaf "finished means" live in the task tree; this note carries stack, environment, and planner corrections.
+## Stack & environment (frozen)
+- Node v22.22.2 (arm64/linux), npm 10.9.7. Node only at `/opt/bento/node/bin` — every shell must `export PATH=/opt/bento/node/bin:$PATH`.
+- `better-sqlite3` **must be `^13`** (v13.0.3 ships a Node-22/arm64 `linux-arm64.node` prebuilt). `^9` has no Node-22 prebuilt and can't compile (no python/gcc/g++/make). **Never `npm install` with scripts** here → always `npm install --ignore-scripts`; the v13 prebuilt loads at runtime via `node-gyp-build`. (Verified: `:memory:` create/insert/select round-trips.)
+- npm workspaces monorepo (`client` + `server`) from root. Root scripts run both tiers.
+- SQLite file path from env `DB_PATH` (server `db.ts`); tests pass a temp path / `:memory:`.
+- `client` = Vite + React 18 + TS + vitest + `@hello-pangea/dnd`. `server` = Express + TS + better-sqlite3 + vitest + tsx.
 
-## ⚠️ Environment correction (Node version)
-The sandbox Node is **v22.22.2** (NODE_MODULE_VERSION 127), arm64/linux. There is **no `python`, `gcc`/`g++`, or `make`** — so every native module MUST come from an npm prebuilt; there is **no source-build fallback**. `registry.npmjs.org` is reachable. ⚠️ The earlier note's "Node v18.19.1 + npm 9.2.0" was an incorrect read of this sandbox — Node 18 is **not** installed here. (Node is a sandbox given, not a user/product decision.)
+## Core data model
+`boards(id,title) → lists(id,boardId,title,position) → cards(id,listId,title,description,position)`. `position` is an integer; reorder = renumber positions; cross-list move = set new `listId` (decided in the model, not drag-pixel math).
 
-## Stack
-- **Server**: Node v22.22.2 + npm 10.9.7, Express + TypeScript + **better-sqlite3 ^13** (v13.0.3; declares `engines.node>=22`; ships a Node-22/arm64 prebuilt that installs & loads — verified on this sandbox). on-disk DB at `server/data/todo.db`; `:memory:` in tests. REST at `/api/...`. Tests: Vitest + supertest, co-located.
-- **Client**: React 18 + TS + Vite + Tailwind + React Router v6 + `@hello-pangea/dnd`. Tests: Vitest + Testing Library + jsdom.
-- Root `package.json` = npm workspaces (`server` now; `client` added by L0b). Root scripts `dev/build/lint/test` run both tiers; `e2e` added by L6. Vite proxies `/api`→server in dev.
+## Leaf dependency order (top→bottom)
+L0a(Scaffold+workspaces) → L0b(Design+plan) → L1(server model + CRUD for cards/lists/boards) → L2(L1 + boards routes + cascade on DELETE) → F1(baseline gates green) → L3(server boards routes + tests, ✗merged) → L4(client BoardView DnD) → L5(client gate green on baseline) → **L6(README + e2e persistence script)**.
 
-## ⚠️ Planner correction — L0a retry 2 (better-sqlite3 version)
-The first L0a retry pinned **better-sqlite3 ^9**, reasoning from the (false) assumption that the sandbox was Node 18 (where v9.6.0 has a prebuilt). That premise is wrong: the sandbox is **Node 22**, and **better-sqlite3 ^9.6.0 has no Node-22/arm64 prebuilt** (v9 predates Node 22's ABI) and cannot be compiled (no toolchain). Verified: `npm install better-sqlite3@^9` on this Node 22 **fails** with a node-gyp/Python error. As committed, L0a **fails its own acceptance #2** ("npm install succeeds; better-sqlite3 installs & loads"). The report's "verified on Node 18" is not reproducible here — Node 18 isn't installed.
+## L4 — Frontend: Kanban BoardView w/ DnD (ACCEPTED, verified green)
+Commit `2083467` on `swarm/todo-app-mvp-aa6a1701`, parent `6f0d452` (current queue tip) → clean 1-commit FF.
 
-On the same Node 22 sandbox: **better-sqlite3 ^13 (13.0.3) installs via prebuilt in ~350ms, loads, and passes CREATE/INSERT/SELECT**. Its `engines.node` is `>=22`, matching the sandbox. With `^13` the **entire L0a gate is green**: install/build/lint/`format:check`/test (4 tests incl. the load test)/`dev` + `GET /api/health` 200 `{ok:true}` + unknown route 404 — all verified on a throwaway copy.
+### Primary files (client)
+- replaces `client/src/pages/BoardView.tsx`; adds `BoardView.test.tsx`, `components/ListColumn.tsx`, `components/CardForm.tsx`, `components/CardDetail.tsx`.
+- `client/vitest.setup.ts` jsdom shims (ResizeObserver, rAF, matchMedia).
 
-**Action (L0a retry 2):** `server/package.json` better-sqlite3 `^9`→`^13`; root `package.json` `engines.node` `>=18`→`>=22` (honest: ^13 requires it); regenerate `package-lock.json`; keep `server/src/better-sqlite3.load.test.ts`; re-run the full gate. The scaffold code (Express app, `/api/health`, 404/500, factory, configs, placeholder+load tests) is otherwise correct and is **kept**. The earlier narrative "^13 segfaults on Node 18" was never reproducible here (no Node 18); on the sandbox's Node 22, ^13 is verified-good. **L0a retry 1 is REJECTED; retry 2 is reassigned.** This is an engineering pin within the committed stack — not a user/product decision.
+### Scope correction (same leaf — "same-lines rule")
+L4 also owns what L2 omitted (a board that lists nothing is not a board): `server/src/routes/lists.ts` (GET `/api/lists?boardId=`) & `cards.ts` (GET `/api/cards?listId=`) with projected `{id,...}`/404/400; `client/src/api/client.ts` `lists.list()`/`cards.list()`; `server/docs/api.md` GET docs; `client/vitest.setup.ts` shims.
 
-## ⚠️ Planner correction — L4 scope (after L4 report aa6a1701 REJECTED, no work found)
-The L4 worker reported "complete + all green," but the L4 branch `swarm/todo-app-mvp-aa6a1701` was still at the F1 commit with **zero L4 commits**; no `CardForm`/`ListColumn`/`CardDetail`/`BoardView.test` existed in any commit, `BoardView.tsx` was still the stub, `api/client.ts` lacked `lists.list`/`cards.list`, and `vitest.setup.ts` had no jsdom shims. The report is rejected with a specific reason and re-assigned to the same branch (rebase onto current `swarm/todo-app-mvp` first, then implement).
+### DnD
+`@hello-pangea/dnd` (not react-dnd — no `findDOMNode` warnings; uses ref callbacks). `DragDropContext` → `Droppable type="COLUMN"` (horizontal lists) → each `ListColumn` is a `Draggable` (no type attr → any column accepts any column, reorder lists) → inner `Droppable type="CARD"` (vertical cards). `onDragEnd` handles reorder-list / reorder-card / move-card-between-lists; each writes API + optimistic local update; 404/500 → rollback + `role="alert"` banner w/ Retry.
 
-**Scope expansion required:** the merged L2 contract never exposed list/card **listing** (only POST/PATCH/DELETE/reorder/move for lists; POST/PATCH/DELETE/move for cards — no `GET /api/lists?boardId=` or `GET /api/cards?listId=`). BoardView (L4) MUST load a board's lists and each list's cards to function. The repo layer already has `lists.list`/`cards.list`, so L4 is required to **complete** that surface — this is finishing L2's intended API, not inventing new scope. These edits touch the same `client/src/api/client.ts` and `server/docs/api.md` lines L4 already owns, so per the "same lines = one leaf" rule they remain **in L4** (not a separate leaf).
+### CRUD (UI ↔ API)
+Add list (`POST /api/lists`), add card (`POST /api/cards`), edit card (click → `CardDetail` modal → Edit → inline `CardForm`: title required, "Saving…" disabled) → `PUT /api/cards/:id`, Delete `DELETE /api/cards/:id`. Delete card removes instantly + persists. Positions contiguous (10-step gaps, renumber on save).
 
-L4 now additionally owns:
-- `server/src/routes/lists.ts` — `GET /?boardId=N` → `lists.list(boardId)` projected to `{id,boardId,title,position}` (400 on missing/invalid).
-- `server/src/routes/cards.ts` — `GET /?listId=N` → `cards.list(listId)` projected to `{id,listId,title,description,position}` (400 on missing/invalid).
-- `client/src/api/client.ts` — add `lists.list(boardId)` and `cards.list(listId)` methods.
-- `server/docs/api.md` — document `GET /lists` and `GET /cards`.
-- `client/vitest.setup.ts` — jsdom shims: `ResizeObserver` (stub) + `requestAnimationFrame`/`cancelAnimationFrame`, so `@hello-pangea/dnd` renders in jsdom (required for the BoardView test).
+### Lifecycle
+`load()` fetches board→lists→cards on mount and after mutations; skeleton while loading, error banner on failure → reload shows persisted truth.
 
-L6's e2e reads list & card state back after move/reorder, so it depends on these GET endpoints landing via L4. (L4's primary files are unchanged: replaces `pages/BoardView.tsx`; adds `BoardView.test.tsx`, `CardForm.tsx`, `CardDetail.tsx`, `ListColumn.tsx`.)
+### Acceptance gates (all GREEN, verified in `/tmp/l4-verify` via `npm install --ignore-scripts`)
+1. `npm --workspace client test` → 5 files, **18 passed** (17 baseline +1 BoardView.test). ✓
+2. `npm --workspace client run typecheck` (`tsc --noEmit`) exit 0. ✓
+3. `npm --workspace client run lint` exit 0. ✓
+4. `npm --workspace server test` → 6 files, **93 passed** (83 baseline +10 GET tests in lists.test.ts/cards.test.ts). ✓
+5. `npx tsc --noEmit -p server/tsconfig.json` exit 0. ✓
+Test deltas match baseline exactly; baseline preserved (no reformatting of repos.ts/repos.test.ts/better-sqlite3.d.ts). Better-sqlite3@13.0.3 prebuilt loads at runtime.
 
-## Dependency order (merge queue lands one branch at a time)
-L0a(retry 2) ──► L0b
-      │                  │
-      ▼                  ▼
-    L1 (db+repos)      F1 waits on L2
-      │
-      ▼
-  L2 (rest api) ──► F1 (frontend core: types/client/theme/layout/router)
-        │                │
-        └───────────────┼──────────────┐
-                        ▼              ▼
-                    L3 (boards)   L4 (board view+DnD)   L5 (CI)   [concurrent-safe, disjoint files]
-                        │              │
-                        └──────────────┘
-                           ▼
-                         L6 (integration: README + e2e)
-Concurrency: {L1, L0b} after L0a(retry 2); {L3, L4, L5} after F1; L6 last.
+### ⚠️ Caveat (finished-means #5)
+"Deleting a list cascades in the UI and via API." The **via-API** half is met: `DELETE /api/lists/:id` cascades to cards (L2, tested) and BoardView re-fetches on mount. The list-**delete UI button** is NOT present (ListColumn/BoardView only wire card-delete). This is flagged as a scope question to the user (see `ask_user`). L4 is still accepted: the core Trello Kanban experience is verified green and the API+reload halves of #5 are met.
 
-## Files owned per leaf (no overlap within a concurrent group)
-- **L0a(retry 2)**: root `package.json` (workspaces + extensible scripts; `engines.node>=22`), `/.gitignore`, root `tsconfig.json`+`.eslintrc.json`+`.prettierrc`+`.prettierignore`, `server/package.json` (better-sqlite3 ^13), `server/tsconfig.json`, `server/.gitignore`, `server/src/index.ts` (`/api/health`, 404, 500; `createApp` factory), `server/src/placeholder.test.ts`, `server/src/better-sqlite3.load.test.ts`; regenerate `package-lock.json`. No client files; no boards/lists/cards routes.
-- **L0b**: all `client/` + `CONTRIBUTING.md` + adds `client` workspace to root scripts.
-- **L1**: `server/src/db/*`, `server/src/models/repos.ts`, extends `server/src/index.ts` (DB init).
-- **L2**: `server/src/routes/*`, `server/docs/api.md`, `server/src/routes/*.test.ts`; extends `server/src/index.ts` (router@`/api`+cors+validation handler). Does NOT include GET /lists or GET /cards listing (L4 closes this gap).
-- **F1**: `client/src/types.ts`, `api/client.ts`, `styles/*`, `theme.ts`, `components/Layout.tsx`, `App.tsx`, `pages/*` stubs, `vitest.setup.ts`.
-- **L3**: replaces `pages/BoardsPage.tsx` + `BoardCard`, `NewBoardDialog`, test.
-- **L4**: replaces `pages/BoardView.tsx`; adds `BoardView.test.tsx`, `CardForm.tsx`, `CardDetail.tsx`, `ListColumn.tsx` (Core Kanban+DnD) AND the GET `/lists` & `/cards` listing endpoints + client `lists.list`/`cards.list` + api.md GET docs + jsdom shims in `vitest.setup.ts` (see scope-correction block above).
-- **L5**: `.github/workflows/ci.yml` only.
-- **L6**: `README.md`, `scripts/e2e.mjs`, root `package.json` `e2e` script.
+## Known-good baseline (preserved)
+Pre-L4: server 83 tests / 6 files, client 17 tests / 4 files. L4 → 93 / 18. `better-sqlite3@13.0.3`, `@hello-pangea/dnd@16.6.0`, `typescript@^5.5.4`.
 
-## Note on current tree state
-L4 was missing from the task tree (described here and now created). L6 is currently parented under L0b in the tree even though its description (and this note) states it depends on L3/L4/L5 — a cosmetic parentage mismatch; L6 is not ready to assign (waits on L3/L4/L5 per its description) and will be gated correctly.
+## Decisions that are NOT the user's (planner call, recorded)
+- better-sqlite3 `^13` + `--ignore-scripts` (forced by no-compiler sandbox; prebuilt works).
+- `@hello-pangea/dnd` over `react-dnd` (no `findDOMNode`, maintained).
+- Card detail as Trello-style modal (`CardDetail`, `role="dialog"`/`aria-modal`, Escape+clict-away) — matches real Trello; satisfies the leaf's "inline edit area" functionally via Edit→`CardForm`.
+- List-delete UI button IS a user scope call (see ask) — **not** a planner decision.
 
-## Known-good baseline (verified on `swarm/todo-app-mvp`, L3+L5 merged, L4 NOT landed)
-- Server tests: 6 files / 83 passed. Client tests: 4 files / 17 passed. `npm --workspace client run typecheck` clean; server lint clean. (L4's rejected report claimed 91/11 — no such files exist.)
+## Current tree state
+- L0a, L0b, L1, L2, F1, L3, L5: done.
+- L4 (`aa6a1701`): **done/accepted** — branch in merge queue, FF-lands onto `swarm/todo-app-mvp`.
+- L6 (`af16a044`): **assigned** — deps L3/L4/L5 done; independent of the list-delete question; file ownership docs/README.md + scripts/e2e.mjs + root `e2e` script.
+- Prior rejected L4 attempts (`6f0059d5`, `52c1bf13`): cancelled/historical (zero-real-commit fabrication).
+- `/tmp/l4-verify`: torn down after verification.
+- `/workspace/OpenToDo`: on `swarm/todo-app-mvp` @ `6f0d452`, clean (not modified during verification).
+- Open question to user: list-delete UI button (above).
