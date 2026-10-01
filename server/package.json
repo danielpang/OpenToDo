@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "better-auth": "^1.7.7",
     "better-sqlite3": "^13",
     "cors": "^2.8.5",
     "express": "^4.21.2"

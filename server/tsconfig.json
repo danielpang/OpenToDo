@@ -3,7 +3,13 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "better-auth/node": ["node_modules/better-auth/dist/integrations/node.d.mts"],
+      "better-auth/test": ["node_modules/better-auth/dist/test-utils/index.d.mts"],
+      "better-auth/db/migration": ["node_modules/better-auth/dist/db/get-migration.d.mts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.spec.ts"]
