@@ -76,12 +76,87 @@ not. (Mirrors what `requireAuth` checks internally.)
 
 ### Social / OAuth providers
 
-BetterAuth's built-in OAuth flows are mounted at:
+OAuth is driven through BetterAuth's **social sign-in** endpoint, which is a
+plain JSON `POST` that returns the provider's authorize URL — it does **not**
+issue a `302` redirect itself. The client navigates the browser to the returned
+`url`; BetterAuth then catches the provider's callback and finally redirects
+the user back to the app.
 
 ```
-GET /api/auth/sign-in/<provider>      # redirects to the provider
-GET /api/auth/oauth2/<provider>       # callback (handled by BetterAuth)
+POST /api/auth/sign-in/social
+Origin: http://localhost:5173            # app origin (must be a trusted origin)
+Content-Type: application/json
+
+{
+  "provider": "google",
+  "callbackURL": "http://localhost:5173/"  # browser is sent here after OAuth
+}
 ```
+
+- **Status:** `200 OK` (not `302`).
+- **Body:** `{"url":"<provider authorize URL>","redirect":true}`,
+  `Content-Type: application/json`.
+- **`Location` header:** set to the same provider authorize URL, *unless*
+  `disableRedirect` is set (see below).
+- **The returned `url`** is the provider's OAuth authorize endpoint and already
+  embeds `state`, PKCE (`code_challenge` / `code_challenge_method=S256`),
+  `redirect_uri=<BETTER_AUTH_URL>/api/auth/callback/<provider>`, and the
+  requested `scope`.
+- **`disableRedirect: true`** (body field) → `200` with
+  `{"url":"...","redirect":false}` and **no** `Location` header; use this when
+  the client wants to drive the redirect itself.
+
+After the browser is sent to `url`, the provider authenticates the user and
+redirects back to BetterAuth's callback:
+
+```
+GET|POST /api/auth/callback/<provider>?code=…&state=…   # handled by BetterAuth
+```
+
+The callback route exchanges the `code` server-side for tokens (replaying the
+PKCE `codeVerifier`), creates/updates the session, **sets the
+`better-auth.session_token` cookie**, and then `302`-redirects the browser to
+the **posted `callbackURL`** (an app route such as `http://localhost:5173/`).
+That `callbackURL` is validated against `trustedOrigins` (see *Trusted origins*
+below); if it is not trusted the sign-in `POST` is rejected with
+`403 INVALID_CALLBACK_URL` before any authorize URL is generated. Note that
+`callbackURL` is the **app-side return target** — it is *not* the OAuth
+`redirect_uri` (which is always `<BETTER_AUTH_URL>/api/auth/callback/<provider>`).
+
+**Other supported body fields** (optional): `disableRedirect`, `idToken` (for
+providers that support id-token sign-in — returns
+`{"redirect":false,"token":"…","user":{}}`), `scopes`, `loginHint`,
+`additionalParams` (merged into the authorize URL; reserved OAuth keys such as
+`state`, `code_challenge`, `redirect_uri` are rejected), and `additionalData`.
+
+**Signed (idToken) sign-in** sends an id token instead of redirecting to the
+provider:
+
+```
+POST /api/auth/sign-in/social
+Content-Type: application/json
+
+{ "provider": "google", "callbackURL": "http://localhost:5173/", "idToken": { "token": "...", "nonce": "..." } }
+```
+
+- **Status:** `200 OK`
+- **Body:** `{"redirect":false,"token":"<session token>","user":{…}}` (no
+  `Location`). Errors here surface as `401` — `INVALID_TOKEN`,
+  `FAILED_TO_GET_USER_INFO`, or `USER_EMAIL_NOT_FOUND` — and `403`
+  `EMAIL_NOT_VERIFIED` (provider returned an unverified email).
+
+**Trusted origins.** BetterAuth validates the request `Origin` (on
+cookie/CSRF-protected requests) and the posted `callbackURL` against
+`trustedOrigins`. The set defaults to the **`BETTER_AUTH_URL` origin only**
+(i.e. `http://localhost:4000`). It is **not** automatically widened for
+`localhost`/`127.0.0.1` on other ports, so the Vite dev front-end on
+`http://localhost:5173` is *untrusted by default* and OAuth `POST`s from it fail
+with `403 INVALID_CALLBACK_URL`. Add it (and any other app origin) with:
+
+- the `BETTER_AUTH_TRUSTED_ORIGINS` env var (comma-separated, auto-loaded by
+  BetterAuth — see `server/.env.example`), e.g.
+  `BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:5173`, or
+- the `trustedOrigins` array in `server/src/auth.ts`.
 
 Configured providers (each enabled only when both its `id` and `secret` are
 set — see `server/.env.example`):
@@ -96,7 +171,8 @@ set — see `server/.env.example`):
 | Status | Meaning | Body |
 | ------ | ------- | ---- |
 | `401` | No `better-auth.session_token` cookie (unauthenticated). | `{ "error": "Unauthenticated" }` |
-| `403` | Cookie present but invalid, expired, or a CSRF `Origin` check failed. | `{ "error": "Unauthorized" }` or a provider message |
+| `403` | OAuth trust gate on the sign-in `POST`: `INVALID_ORIGIN` (the request `Origin` is not in `trustedOrigins`) or `INVALID_CALLBACK_URL` (the posted `callbackURL` is not in `trustedOrigins`). Both default to permitting only the `BETTER_AUTH_URL` origin. | `{ "message": "Invalid origin" \| "Invalid callbackURL", "code": "INVALID_ORIGIN" \| "INVALID_CALLBACK_URL" }` |
+| `403` | A cookie-bearing / CSRF-protected `POST` whose `Origin` header does not match a trusted origin (general CSRF gate). | `{ "error": "Unauthorized" }` or a provider message |
 
 ## Error handling
 

@@ -187,6 +187,44 @@ migrated BetterAuth instance, seeds a user, signs in over HTTP, and asserts
 [`server/docs/api.md`](server/docs/api.md#authentication) for the full
 `/api/auth/*` contract.
 
+### OAuth / social sign-in
+
+Social sign-in is a **JSON `POST`** that returns the provider's authorize URL —
+it does _not_ `302`-redirect on its own:
+
+```bash
+# 1) Ask the backend for a provider authorize URL (returns 200, not 302):
+curl -X POST http://localhost:4000/api/auth/sign-in/social \
+  -H 'content-type: application/json' \
+  -H 'Origin: http://localhost:5173' \
+  -d '{"provider":"google","callbackURL":"http://localhost:5173/"}'
+# → 200 {"url":"https://accounts.google.com/o/oauth2/v2/auth?...&redirect_uri=…%2Fapi%2Fauth%2Fcallback%2Fgoogle&code_challenge_method=S256&code_challenge=…","redirect":true}
+#   (+ a `Location` header pointing at the same URL)
+```
+
+The **client** then navigates the browser to the returned `url`. The provider
+authenticates the user and redirects back to
+`GET|POST /api/auth/callback/<provider>?code=…&state=…`, where BetterAuth
+exchanges the `code` (server-side, with the PKCE `codeVerifier`), sets the
+`better-auth.session_token` cookie, and `302`-redirects the browser to the
+posted **`callbackURL`** — an app route such as `http://localhost:5173/`. That
+`callbackURL` is _not_ the OAuth `redirect_uri` (which is always
+`<BETTER_AUTH_URL>/api/auth/callback/<provider>`); it is the app-side URL the
+user lands on after sign-in.
+
+> **`BETTER_AUTH_TRUSTED_ORIGINS` / dev trust.** BetterAuth validates the posted
+> `callbackURL` and the request `Origin` against `trustedOrigins`, which by
+> default is **only the `BETTER_AUTH_URL` origin** (`http://localhost:4000`).
+> BetterAuth does _not_ auto-trust `localhost` on other ports, so the Vite
+> front-end on `http://localhost:5173` is **untrusted by default** and OAuth
+> `POST`s from it are rejected with `403 INVALID_CALLBACK_URL`. Trust it (and any
+> other app origin) by setting `BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:5173`
+> in `server/.env` — BetterAuth auto-reads this comma-separated env var at
+> startup (see `server/.env.example`). You can also pass the `trustedOrigins`
+> array directly in `server/src/auth.ts`. For programmatic (no-redirect) flows,
+> add `disableRedirect: true` to the body: the response is then
+> `200 {"url":"…","redirect":false}` with _no_ `Location` header.
+
 ---
 
 ## API surface
@@ -196,32 +234,37 @@ and status code — lives in **[`server/docs/api.md`](server/docs/api.md)**.
 
 Quick reference (all under base URL `http://localhost:4000/api`, JSON in/out):
 
-| Resource | Method   | Path                                                   | Returns                                 |
-| -------- | -------- | ------------------------------------------------------ | --------------------------------------- |
-| Boards   | `GET`    | `/boards`                                              | `Board[]`                               |
-|          | `GET`    | `/boards/:id`                                          | `Board`                                 |
-|          | `POST`   | `/boards` `{title}`                                    | `Board` (201)                           |
-|          | `PATCH`  | `/boards/:id` `{title}`                                | `Board`                                 |
-|          | `DELETE` | `/boards/:id`                                          | 204                                     |
-| Lists    | `GET`    | `/lists?boardId=...`                                   | `List[]`                                |
-|          | `POST`   | `/lists` `{boardId,title}`                             | `List` (201)                            |
-|          | `POST`   | `/lists/reorder` `{boardId,ids[]}`                     | `List[]`                                |
-|          | `PATCH`  | `/lists/:id` `{title}`                                 | `List`                                  |
-|          | `DELETE` | `/lists/:id`                                           | 204                                     |
-| Cards    | `GET`    | `/cards?listId=...`                                    | `Card[]`                                |
-|          | `POST`   | `/cards` `{listId,title,description?}`                 | `Card` (201)                            |
-|          | `POST`   | `/cards/move` `{fromListId,toListId,cardId,position?}` | `Card`                                  |
-|          | `PATCH`  | `/cards/:id` `{title,description,listId}`              | `Card`                                  |
-|          | `DELETE` | `/cards/:id`                                           | 204                                     |
-| Auth     | `POST`   | `/auth/sign-in/email` 🔒                               | sets `better-auth.session_token` cookie |
-|          | `POST`   | `/auth/sign-up/email` 🔒                               | sets `better-auth.session_token` cookie |
-|          | `POST`   | `/auth/sign-out`                                       | clears the session cookie               |
-|          | `GET`    | `/auth/get-session`                                    | current user/session                    |
+| Resource | Method     | Path                                                   | Returns                                                                                                       |
+| -------- | ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Boards   | `GET`      | `/boards`                                              | `Board[]`                                                                                                     |
+|          | `GET`      | `/boards/:id`                                          | `Board`                                                                                                       |
+|          | `POST`     | `/boards` `{title}`                                    | `Board` (201)                                                                                                 |
+|          | `PATCH`    | `/boards/:id` `{title}`                                | `Board`                                                                                                       |
+|          | `DELETE`   | `/boards/:id`                                          | 204                                                                                                           |
+| Lists    | `GET`      | `/lists?boardId=...`                                   | `List[]`                                                                                                      |
+|          | `POST`     | `/lists` `{boardId,title}`                             | `List` (201)                                                                                                  |
+|          | `POST`     | `/lists/reorder` `{boardId,ids[]}`                     | `List[]`                                                                                                      |
+|          | `PATCH`    | `/lists/:id` `{title}`                                 | `List`                                                                                                        |
+|          | `DELETE`   | `/lists/:id`                                           | 204                                                                                                           |
+| Cards    | `GET`      | `/cards?listId=...`                                    | `Card[]`                                                                                                      |
+|          | `POST`     | `/cards` `{listId,title,description?}`                 | `Card` (201)                                                                                                  |
+|          | `POST`     | `/cards/move` `{fromListId,toListId,cardId,position?}` | `Card`                                                                                                        |
+|          | `PATCH`    | `/cards/:id` `{title,description,listId}`              | `Card`                                                                                                        |
+|          | `DELETE`   | `/cards/:id`                                           | 204                                                                                                           |
+| Auth     | `POST`     | `/auth/sign-in/email` 🔒                               | sets `better-auth.session_token` cookie                                                                       |
+|          | `POST`     | `/auth/sign-up/email` 🔒                               | sets `better-auth.session_token` cookie                                                                       |
+|          | `POST`     | `/auth/sign-in/social` 🔒                              | `200` `{"url","redirect":true}` + `Location` → provider (`disableRedirect` → `redirect:false`, no `Location`) |
+|          | `GET/POST` | `/auth/callback/:provider`                             | exchanges code, sets cookie, `302` → `callbackURL`                                                            |
+|          | `POST`     | `/auth/sign-out`                                       | clears the session cookie                                                                                     |
+|          | `GET`      | `/auth/get-session`                                    | current user/session                                                                                          |
 
 Auth routes are mounted at `/api/auth` and handled by BetterAuth directly.
 They require an `Origin` header matching `BETTER_AUTH_URL` on sign-in/sign-up
-POSTs (CSRF). All other rows require a valid `better-auth.session_token` cookie;
-see [Authentication](#authentication) and [`server/docs/api.md`](server/docs/api.md#authentication).
+POSTs (CSRF). The OAuth `POST /auth/sign-in/social` additionally validates the
+posted `callbackURL` and request `Origin` against `trustedOrigins` (default =
+the `BETTER_AUTH_URL` origin only; add the Vite origin via
+`BETTER_AUTH_TRUSTED_ORIGINS`); see [Authentication](#authentication) and
+[`server/docs/api.md`](server/docs/api.md#social--oauth-providers).
 
 **Types:** request bodies use **camelCase**; the server projects SQLite rows
 (`snake_case` columns such as `board_id`, `list_id`, `created_at`) to
@@ -298,14 +341,15 @@ OpenToDo/
 
 ## Configuration
 
-| Variable                                      | Default                                        | Workspace | Description                                                                                                           |
-| --------------------------------------------- | ---------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                                        | `4000`                                         | server    | Express listen port.                                                                                                  |
-| `BETTER_AUTH_URL`                             | `http://localhost:4000`                        | server    | Auth base URL — sets cookie scope and is the value the CSRF `Origin` check compares against on sign-in/sign-up POSTs. |
-| `BETTER_AUTH_SECRET`                          | `dev-better-auth-secret-replace-in-production` | server    | BetterAuth session-cookie signing key (must be ≥ 32 chars; override in production).                                   |
-| `BETTER_AUTH_DB_PATH`                         | `:memory:`                                     | server    | Auth session database (a `node:sqlite` file). Kept **separate** from the app's `todo.db` data store.                  |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`   | _(empty)_                                      | server    | Google OAuth credentials. Leave empty to disable Google sign-in.                                                      |
-| `TWITTER_CLIENT_ID` / `TWITTER_CLIENT_SECRET` | _(empty)_                                      | server    | Twitter/X OAuth credentials (BetterAuth `twitter` provider). Leave empty to disable X sign-in.                        |
+| Variable                                      | Default                                        | Workspace | Description                                                                                                                                                                                                                                                                        |
+| --------------------------------------------- | ---------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                                        | `4000`                                         | server    | Express listen port.                                                                                                                                                                                                                                                               |
+| `BETTER_AUTH_URL`                             | `http://localhost:4000`                        | server    | Auth base URL — sets cookie scope and is the value the CSRF `Origin` check compares against on sign-in/sign-up POSTs. Also the _default_ trusted origin; OAuth `POST /auth/sign-in/social` validates the posted `callbackURL` and request `Origin` against the trusted-origin set. |
+| `BETTER_AUTH_TRUSTED_ORIGINS`                 | _(empty)_                                      | server    | Comma-separated extra origins to trust for OAuth/social sign-in (e.g. `http://localhost:5173` for the Vite dev front-end). Auto-read by BetterAuth at startup; the default is only the `BETTER_AUTH_URL` origin.                                                                   |
+| `BETTER_AUTH_SECRET`                          | `dev-better-auth-secret-replace-in-production` | server    | BetterAuth session-cookie signing key (must be ≥ 32 chars; override in production).                                                                                                                                                                                                |
+| `BETTER_AUTH_DB_PATH`                         | `:memory:`                                     | server    | Auth session database (a `node:sqlite` file). Kept **separate** from the app's `todo.db` data store.                                                                                                                                                                               |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`   | _(empty)_                                      | server    | Google OAuth credentials. Leave empty to disable Google sign-in.                                                                                                                                                                                                                   |
+| `TWITTER_CLIENT_ID` / `TWITTER_CLIENT_SECRET` | _(empty)_                                      | server    | Twitter/X OAuth credentials (BetterAuth `twitter` provider). Leave empty to disable X sign-in.                                                                                                                                                                                     |
 
 The app's todo database is **not** env-configurable: it defaults to
 `server/data/todo.db` (see `DB_PATH` in `server/src/db/index.ts`) and is created
