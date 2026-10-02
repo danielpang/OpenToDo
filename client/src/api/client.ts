@@ -85,6 +85,10 @@ export async function request<T>(path: string, { body, init }: RequestOptions = 
     headers: { ...DEFAULT_HEADERS, ...(init?.headers ?? {}) },
     method,
     body: body === undefined ? undefined : JSON.stringify(body),
+    // Carry the BetterAuth session cookie on every request so the now-
+    // authenticated (server-side `requireAuth`) REST endpoints receive the
+    // caller's session. An explicit `credentials` on `init` still wins.
+    credentials: init?.credentials ?? 'include',
   });
 
   // 204 No Content (and any empty body) -> nothing to parse.
