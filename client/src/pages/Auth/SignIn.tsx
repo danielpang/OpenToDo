@@ -10,14 +10,16 @@ type SocialProvider = 'google' | 'twitter';
 
 /**
  * Unauthenticated landing for `/sign-in`. Presents the two SSO entry points —
- * Google and X — each of which calls `authClient.signIn.social({ provider })`.
- * BetterAuth redirects the browser to the provider and back through
- * `/api/auth/callback/...`, which lands on the server's `/api/auth` mount
- * before completing the session.
+ * Google and X — each of which calls
+ * `authClient.signIn.social({ provider, callbackURL })` with `callbackURL` set
+ * to `window.location.origin` so BetterAuth redirects the browser back to the
+ * Vite app (the user's origin) after the provider handshake, rather than the
+ * API host, then routes through `/api/auth/callback/...` before completing
+ * the session.
  */
 export default function SignIn() {
   async function signIn(provider: SocialProvider) {
-    await authClient.signIn.social({ provider });
+    await authClient.signIn.social({ provider, callbackURL: window.location.origin });
   }
 
   return (

@@ -42,7 +42,10 @@ describe('SignIn', () => {
     await user.click(screen.getByRole('button', { name: /sign in with google/i }));
 
     expect(social).toHaveBeenCalledTimes(1);
-    expect(social).toHaveBeenCalledWith({ provider: 'google' });
+    expect(social).toHaveBeenCalledWith({
+      provider: 'google',
+      callbackURL: 'http://localhost:3000',
+    });
   });
 
   it('signs in with X (twitter provider) when the X button is clicked', async () => {
@@ -54,7 +57,10 @@ describe('SignIn', () => {
     await user.click(screen.getByRole('button', { name: /sign in with x/i }));
 
     expect(social).toHaveBeenCalledTimes(1);
-    expect(social).toHaveBeenCalledWith({ provider: 'twitter' });
+    expect(social).toHaveBeenCalledWith({
+      provider: 'twitter',
+      callbackURL: 'http://localhost:3000',
+    });
   });
 
   it('routes each provider through signIn.social with the correct key', async () => {
@@ -69,5 +75,9 @@ describe('SignIn', () => {
     expect(social).toHaveBeenCalledTimes(2);
     const providers = social.mock.calls.map((c) => (c[0] as { provider: string }).provider);
     expect(providers).toEqual(['google', 'twitter']);
+    const callbackURLs = social.mock.calls.map(
+      (c) => (c[0] as { callbackURL: string }).callbackURL,
+    );
+    expect(callbackURLs).toEqual(['http://localhost:3000', 'http://localhost:3000']);
   });
 });
