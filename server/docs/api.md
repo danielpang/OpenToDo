@@ -7,9 +7,96 @@ projections of the underlying SQLite rows (which use `snake_case` columns such
 as `board_id`, `list_id`, `created_at`).
 
 - **Base URL:** `http://localhost:4000/api`
+- **Auth:** every resource endpoint below requires a valid BetterAuth session
+  (a signed `better-auth.session_token` cookie). Unauthenticated requests are
+  rejected with `401`; an invalid/expired session is rejected with `403`. See
+  [Authentication](#authentication) below for the sign-in flow.
 - **Data model:** a `board` owns `list`s; a `list` owns `card`s.
   Positions are **1-based, dense** within a parent. Deleting a parent
   cascades (via SQLite `ON DELETE CASCADE`) to its children.
+
+## Authentication
+
+Auth is provided by [BetterAuth](https://better-auth.org) and exposed under
+`/api/auth`. The server mounts BetterAuth's handler at `/api/auth`
+(`toNodeHandler` in `server/src/index.ts`), so all `/api/auth/*` routes are
+handled by BetterAuth directly — they are **not** part of the app's own
+Express routers.
+
+### Session model
+
+A session is a signed cookie named **`better-auth.session_token`**. The value is
+opaque and already URL-safe; send it back verbatim in a request `Cookie` header:
+
+```
+Cookie: better-auth.session_token=<token>.<signature>
+```
+
+The `requireAuth` middleware (`server/src/middleware/requireAuth.ts`) validates
+this cookie on every protected route by calling
+`auth.api.getSession({ headers })`. The cookie is **required** on all
+`/api/boards`, `/api/lists`, and `/api/cards` endpoints.
+
+### Email / password sign-in
+
+```
+POST /api/auth/sign-in/email
+Content-Type: application/json
+Origin: http://localhost:4000          # CSRF: must match BETTER_AUTH_URL
+
+{ "email": "user@example.com", "password": "••••••", "callbackURL": "/" }
+```
+
+- **Status:** `200 OK` (with the session cookie set).
+- **On the wire:** the response sets `better-auth.session_token` via `Set-Cookie`
+  (signed, `HttpOnly`, `Path=/`). A `403` with body `{ "error": "Username or password is incorrect" }`
+  on bad credentials.
+- **CSRF note:** the `Origin` header is mandatory on sign-in/sign-up POSTs and
+  must match `BETTER_AUTH_URL`; omitting it returns `403 MISSING_OR_NULL_OR_ORIGIN`.
+- **Sign-up:** `POST /api/auth/sign-up/email` with the same shape and headers is
+  how new email/password users are created (used by the dev flow and the e2e
+  suite, which seeds `e2e@test.com`).
+
+### Signing out
+
+```
+POST /api/auth/sign-out
+```
+
+Clears the session cookie (`Set-Cookie: better-auth.session_token=; Max-Age=0`).
+
+### Inspecting the current session
+
+```
+GET /api/auth/get-session
+```
+
+Returns the authenticated user/session when the cookie is valid, or `null` when
+not. (Mirrors what `requireAuth` checks internally.)
+
+### Social / OAuth providers
+
+BetterAuth's built-in OAuth flows are mounted at:
+
+```
+GET /api/auth/sign-in/<provider>      # redirects to the provider
+GET /api/auth/oauth2/<provider>       # callback (handled by BetterAuth)
+```
+
+Configured providers (each enabled only when both its `id` and `secret` are
+set — see `server/.env.example`):
+
+| Provider key | Env vars              | Notes |
+|--------------|-----------------------|-------|
+| `google`     | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth. |
+| `twitter`    | `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET` | Twitter/X. X (formerly Twitter) is configured under BetterAuth's **`twitter`** provider key — set the `TWITTER_*` vars to enable "Sign in with X/Twitter". |
+
+### Error handling reference
+
+| Status | Meaning | Body |
+| ------ | ------- | ---- |
+| `401` | No `better-auth.session_token` cookie (unauthenticated). | `{ "error": "Unauthenticated" }` |
+| `403` | Cookie present but invalid, expired, or a CSRF `Origin` check failed. | `{ "error": "Unauthorized" }` or a provider message |
 
 ## Error handling
 
@@ -19,6 +106,8 @@ on failure:
 | Status | Meaning                                                     |
 | ------ | ----------------------------------------------------------- |
 | `400`  | Bad/missing input: malformed body, missing or invalid field.|
+| `401`  | No valid session: the `better-auth.session_token` cookie is missing. `{ "error": "Unauthenticated" }` |
+| `403`  | Session cookie present but invalid/expired, or a CSRF `Origin` check on a sign-in/sign-up POST failed. `{ "error": "Unauthorized" }` |
 | `404`  | The referenced resource (or a foreign-key parent) was found missing. |
 | `500`  | Unexpected server error. Logged on the server; body is `{ "error": "Internal Server Error" }`. |
 

@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - swarm/todo-app-mvp
+      - swarm/implement-auth
       - main
 
 jobs:

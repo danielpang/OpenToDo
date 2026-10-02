@@ -11,9 +11,12 @@ coverage/
 *.log
 npm-debug.log*
 
-# Environment
+# Environment — `.env` holds real secrets and must NEVER be committed.
+# `.env.*` ignores `.env.local` etc., but we deliberately DO commit the
+# example template (it contains no real secrets) so the app is reproducible:
 .env
 .env.*
+!server/.env.example
 
 # Server database (created at runtime, L1)
 /server/data/
