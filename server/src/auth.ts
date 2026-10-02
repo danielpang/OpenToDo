@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
+import { getMigrations } from 'better-auth/db/migration';
 import type { Auth, BetterAuthOptions } from 'better-auth';
 
 /**
@@ -32,10 +33,11 @@ function getSocialProviders(): BetterAuthOptions['socialProviders'] {
  * `BETTER_AUTH_DB_PATH`). Tests inject their own migrated `DatabaseSync` via
  * `getTestInstance`.
  *
- * NOTE: this only constructs the auth object; it does NOT run migrations. The
- * `getMigrations`/`runMigrations` helpers from `better-auth/db/migration` are
- * intentionally deferred to a future leaf to bring the `/api/auth/*` tables
- * into existence before serving auth traffic against a non-in-memory database.
+ * NOTE: this only constructs the auth object; it does NOT run database
+ * migrations. Use `initAuth()` to construct the singleton AND run the
+ * BetterAuth migrations (`getMigrations`/`runMigrations` from
+ * `better-auth/db/migration`) so the `user`/`session`/`account`/`verification`
+ * tables exist before serving auth traffic against a file-backed database.
  */
 export function createAuth(database?: DatabaseSync): Auth {
   const db: DatabaseSync =
@@ -58,6 +60,18 @@ export function createAuth(database?: DatabaseSync): Auth {
     // Rate limiting is disabled to avoid requiring its backing table in the
     // (not-yet-migrated) bootstrap database.
     rateLimit: { enabled: false },
+    // Origins that may issue sign-in/sign-up POSTs without a CSRF failure.
+    // The Vite dev server (5173) is always trusted so the local client can hit
+    // the running server; additional origins come from BETTER_AUTH_TRUSTED_ORIGINS.
+    trustedOrigins: [
+      'http://localhost:5173',
+      process.env.BETTER_AUTH_URL ?? 'http://localhost:4000',
+      ...(process.env.BETTER_AUTH_TRUSTED_ORIGINS
+        ? process.env.BETTER_AUTH_TRUSTED_ORIGINS.split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []),
+    ],
     socialProviders: getSocialProviders(),
   };
 
@@ -86,6 +100,25 @@ export function getAuth(): Auth {
  */
 export function setAuth(auth: Auth | null): void {
   _auth = auth;
+}
+
+/**
+ * Bootstraps the auth singleton AND runs BetterAuth's database migrations, so
+ * the `user`/`session`/`account`/`verification` tables exist on the backing
+ * `node:sqlite` database before the server starts serving `/api/auth/*`
+ * traffic. Idempotent: the first call constructs the instance and migrates;
+ * later calls return the cached singleton.
+ *
+ * Called once on server startup (`server/src/index.ts`); tests may invoke it
+ * directly with `BETTER_AUTH_DB_PATH` pointed at a temp file.
+ */
+export async function initAuth(): Promise<Auth> {
+  if (_auth) return _auth;
+  const auth = createAuth();
+  const { runMigrations } = await getMigrations(auth.options);
+  await runMigrations();
+  _auth = auth;
+  return auth;
 }
 
 export type { Auth };

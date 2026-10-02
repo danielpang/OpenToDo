@@ -1,9 +1,10 @@
 import express, { Express, NextFunction, Request, Response } from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import { getDb } from './db';
 import { toNodeHandler } from 'better-auth/node';
 import { apiErrorHandler, router as apiRouter } from './routes';
-import { getAuth } from './auth';
+import { getAuth, initAuth } from './auth';
 
 // Application factory: builds and returns the Express app. Kept as a function so that
 // later leaves (e.g. L1 DB init, L2 router mount) can wire up middleware/routes before
@@ -63,14 +64,26 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
 // Start the server only when this module is executed directly (e.g. `tsx src/index.ts`),
 // not when it is imported by tests/Supertest, which would collide on the port.
 if (require.main === module) {
-  // Ensure the shared on-disk database exists and its schema is migrated on
-  // startup. createApp() stays DB-free so importing `app` (e.g. in tests)
-  // does not touch the filesystem.
+  // Load .env (a no-op when absent — this branch only runs for a real launch,
+  // so tests/Supertest that import `app` never touch the filesystem for env).
+  dotenv.config();
+  // Ensure the shared on-disk todos database exists and its schema is migrated.
   getDb();
-  app.listen(PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(`Server listening on http://localhost:${PORT}`);
-  });
+  // Construct the auth singleton AND run BetterAuth migrations against
+  // BETTER_AUTH_DB_PATH so the auth tables exist before serving /api/auth/*
+  // traffic. Only runs for a real launch (tests inject their own instance).
+  initAuth()
+    .then(() => {
+      app.listen(PORT, () => {
+        // eslint-disable-next-line no-console
+        console.log(`Server listening on http://localhost:${PORT}`);
+      });
+    })
+    .catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error(err);
+      process.exit(1);
+    });
 }
 
 export { app, createApp };
