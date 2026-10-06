@@ -8,6 +8,7 @@ import RequireAuth from './components/RequireAuth';
 // resolve to a static heading so the route shell is exercised end-to-end.
 const BoardsPage = lazy(() => import('./pages/BoardsPage'));
 const BoardView = lazy(() => import('./pages/BoardView'));
+const PlannerPage = lazy(() => import('./pages/PlannerPage'));
 // Auth surfaces are lazy too: the sign-in shell is only fetched when an
 // unauthenticated (or explicitly navigating) user reaches `/sign-in`.
 const SignIn = lazy(() => import('./pages/Auth/SignIn'));
@@ -18,9 +19,9 @@ const SignIn = lazy(() => import('./pages/Auth/SignIn'));
  * lazy-loaded and wrapped in a single `<Suspense>` boundary so the shell is
  * ready while chunks stream in.
  *
- * The `/boards*` routes are wrapped in `RequireAuth`, so an unauthenticated
- * session is redirected to `/sign-in`. `/sign-in` lives outside the guard so
- * the login shell is always reachable.
+ * The `/boards*` and `/planner` routes are wrapped in `RequireAuth`, so an
+ * unauthenticated session is redirected to `/sign-in`. `/sign-in` lives
+ * outside the guard so the login shell is always reachable.
  */
 export default function App() {
   return (
@@ -43,6 +44,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <BoardView />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/planner"
+              element={
+                <RequireAuth>
+                  <PlannerPage />
                 </RequireAuth>
               }
             />
