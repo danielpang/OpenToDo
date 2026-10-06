@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { motion, theme } from '../theme';
 import { authClient } from '../lib/auth-client';
 
@@ -7,7 +7,7 @@ import { authClient } from '../lib/auth-client';
  * Application shell. Renders the persistent header — a branded accent bar with
  * the "OpenToDo" title that slides down on mount via the `motion.spring` token
  * (transform + opacity) — and an `<Outlet/>` into which React Router renders
- * the matched page route (BoardsPage or BoardView).
+ * the matched page route (BoardsPage, BoardView, or PlannerPage).
  *
  * The header also carries the auth affordance: when a session is present it
  * shows the signed-in user's name (and a sign-out button that calls
@@ -46,6 +46,31 @@ export default function Layout() {
           />
           <h1 className="text-lg font-semibold">OpenToDo</h1>
         </div>
+
+        {user && (
+          <nav aria-label="Primary" className="flex items-center gap-4">
+            <NavLink
+              to="/boards"
+              className={({ isActive }) =>
+                isActive
+                  ? 'rounded-sm text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+                  : 'rounded-sm text-sm font-medium text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-slate-400 dark:hover:text-slate-100'
+              }
+            >
+              Boards
+            </NavLink>
+            <NavLink
+              to="/planner"
+              className={({ isActive }) =>
+                isActive
+                  ? 'rounded-sm text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+                  : 'rounded-sm text-sm font-medium text-slate-500 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-slate-400 dark:hover:text-slate-100'
+              }
+            >
+              Weekend planner
+            </NavLink>
+          </nav>
+        )}
 
         {user && (
           <div className="flex items-center gap-3">
